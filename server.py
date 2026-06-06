@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
-ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/5"  # latest model version
+ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/6"  # latest model version
 
 @app.route('/health')
 def health():
