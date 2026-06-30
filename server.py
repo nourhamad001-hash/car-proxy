@@ -10,9 +10,9 @@ ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
 ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/7"
 
 # ---- anti-false-positive tuning (all overridable via Railway Variables) ----
-CONFIDENCE     = int(os.environ.get("CONFIDENCE", "55"))      # was 40. Higher = fewer false hits.
-TARGET_AREA    = float(os.environ.get("TARGET_AREA", "0.10")) # was 0.05. Sensor must fill >=10% of frame to "stop".
-CONFIRM_FRAMES = int(os.environ.get("CONFIRM_FRAMES", "2"))   # must be seen this many times in a row before acting.
+CONFIDENCE     = 45    # detection threshold. Lower = detects from farther / more easily.
+TARGET_AREA    = 0.08  # sensor must fill this fraction of frame to "stop". Lower = stops from farther.
+CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (kills flicker false-positives).
 
 # tracks how many frames in a row we've seen the target
 streak = 0
