@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
-ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/7"
+ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/8"
 
 # ---- anti-false-positive tuning (all overridable via Railway Variables) ----
 CONFIDENCE     = 45    # detection threshold. Lower = detects from farther / more easily.
