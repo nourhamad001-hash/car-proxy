@@ -10,7 +10,7 @@ ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
 ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/6"
 
 # ---- anti-false-positive tuning (all overridable via Railway Variables) ----
-CONFIDENCE     = 20    # detection threshold. Lower = detects from farther / more easily.
+CONFIDENCE     = 22    # detection threshold. Lower = detects from farther / more easily.
 CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (kills flicker false-positives).
 
 # ---- distance estimation (camera-based, no ultrasonic sensor needed) ----
