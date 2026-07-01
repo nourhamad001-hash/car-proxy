@@ -11,39 +11,37 @@ ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/6"
 
 # ---- anti-false-positive tuning (all overridable via Railway Variables) ----
 CONFIDENCE     = 20    # detection threshold. Lower = detects from farther / more easily.
-CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (kills flicker false-positives).
+CONFIRM_FRAMES = 1     # must be seen this many frames in a row before trusting a detection at all.
 
-# ---- distance estimation (camera-based, no ultrasonic sensor needed) ----
-# distance_cm = (SENSOR_WIDTH_CM * FOCAL_LENGTH_PX) / bbox_width_px
-# SENSOR_WIDTH_CM: real-world width of the HC-SR04 board, measure with a ruler.
-# FOCAL_LENGTH_PX: calibrate once -> take a photo with the sensor at a KNOWN
-#   distance (e.g. 30cm), note the bbox width (pixels) the model reports for
-#   that photo, then: FOCAL_LENGTH_PX = (bw_at_30cm * 30) / SENSOR_WIDTH_CM
-#   The value below is a rough placeholder until you calibrate it.
-SENSOR_WIDTH_CM  = 4.5
-FOCAL_LENGTH_PX  = 500
-STOP_DISTANCE_CM = 19    # stop only once genuinely close/touching - "reach it", not stop far short
+# ---- simple fixed-count approach (no distance measurement) ----
+# Once the sensor is confirmed, drive FORWARD this many times, then stop.
+# No camera calibration needed, just a fixed number of "steps" toward it.
+FORWARD_STEPS_BEFORE_STOP = 2
 
 # tracks how many frames in a row we've seen the target
 streak = 0
+# tolerant miss tracking - one flaky missed frame doesn't fully reset streak
+miss_streak = 0
+MISS_TOLERANCE = 2
+# how many confirmed FORWARD moves we've made toward the target so far
+approach_count = 0
 
 
 @app.route('/health')
 def health():
     return jsonify({
-        "status":           "ok",
-        "model":            ROBOFLOW_MODEL,
-        "api_key_set":      bool(ROBOFLOW_API_KEY),
-        "confidence":       CONFIDENCE,
-        "confirm_frames":   CONFIRM_FRAMES,
-        "stop_distance_cm": STOP_DISTANCE_CM,
-        "focal_length_px":  FOCAL_LENGTH_PX
+        "status":                    "ok",
+        "model":                     ROBOFLOW_MODEL,
+        "api_key_set":               bool(ROBOFLOW_API_KEY),
+        "confidence":                CONFIDENCE,
+        "confirm_frames":            CONFIRM_FRAMES,
+        "forward_steps_before_stop": FORWARD_STEPS_BEFORE_STOP
     })
 
 
 @app.route('/detect', methods=['POST'])
 def detect():
-    global streak
+    global streak, miss_streak, approach_count
     try:
         b64 = request.get_json().get('image')
         if not b64:
@@ -68,6 +66,7 @@ def detect():
 
         if r.status_code != 200 or "predictions" not in d:
             streak = 0
+            approach_count = 0
             msg = d.get("message") or d.get("error") or r.text[:200] or "unknown error"
             print(f"ROBOFLOW ERROR {r.status_code}: {msg}")
             return jsonify({
@@ -83,7 +82,11 @@ def detect():
         print(f"Detections: {all_labels}")
 
         if not preds:
-            streak = 0
+            miss_streak += 1
+            if miss_streak >= MISS_TOLERANCE:
+                streak = 0
+                approach_count = 0
+            print(f"No detection this frame (miss {miss_streak}/{MISS_TOLERANCE}), streak={streak}")
             return jsonify({
                 "command": "FORWARD", "target_found": False,
                 "reason": "No sensor detected — searching",
@@ -95,7 +98,6 @@ def detect():
         bw   = best["width"]
         bh   = best["height"]
         conf = round(best["confidence"] * 100)
-        distance_cm = round((SENSOR_WIDTH_CM * FOCAL_LENGTH_PX) / bw, 1) if bw > 0 else None
         bbox = {
             "x": round((cx - bw / 2) / iw, 3),
             "y": round((best["y"] - bh / 2) / ih, 3),
@@ -104,35 +106,37 @@ def detect():
         }
 
         streak += 1
+        miss_streak = 0
         confirmed = streak >= CONFIRM_FRAMES
-        print(f"Best: {best.get('class')} conf={conf}% distance_cm={distance_cm} streak={streak} confirmed={confirmed}")
+        print(f"Best: {best.get('class')} conf={conf}% streak={streak} confirmed={confirmed} approach_count={approach_count}")
 
-        # Stop immediately if close enough, regardless of confirm streak -
-        # waiting for confirmation here only risks overshooting/crashing into
-        # the target while frames are still "confirming".
-        if distance_cm is not None and distance_cm <= STOP_DISTANCE_CM:
+        if not confirmed:
             return jsonify({
-                "command": "TARGET_FOUND", "target_found": True,
-                "reason": f"Sensor close ({distance_cm}cm) — stopping!",
-                "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels,
-                "distance_cm": distance_cm
+                "command": "FORWARD", "target_found": False,
+                "reason": f"Maybe sensor ({conf}%) — confirming {streak}/{CONFIRM_FRAMES}",
+                "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels
             })
 
-        # Forward-only navigation: no left/right steering, just drive straight
-        # at whatever's detected until it's close enough (by distance) to stop.
-        if not confirmed:
-            reason = f"Maybe sensor ({conf}%) — confirming {streak}/{CONFIRM_FRAMES}"
-        else:
-            reason = f"Found it! Driving to it ({distance_cm}cm)..."
+        # Confirmed: take one more forward step. Once we've taken
+        # FORWARD_STEPS_BEFORE_STOP steps toward it, stop.
+        approach_count += 1
+        if approach_count >= FORWARD_STEPS_BEFORE_STOP:
+            approach_count = 0
+            return jsonify({
+                "command": "TARGET_FOUND", "target_found": True,
+                "reason": f"Found it! ({conf}%) — reached, stopping!",
+                "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels
+            })
 
         return jsonify({
             "command": "FORWARD", "target_found": False,
-            "reason": reason, "confidence": best["confidence"],
-            "bbox": bbox, "all_labels": all_labels, "distance_cm": distance_cm
+            "reason": f"Found it! Driving to it ({approach_count}/{FORWARD_STEPS_BEFORE_STOP})...",
+            "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels
         })
 
     except Exception as e:
         streak = 0
+        approach_count = 0
         print(f"Error: {e}")
         return jsonify({
             "command": "STOP", "target_found": False,
