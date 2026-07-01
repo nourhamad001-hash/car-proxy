@@ -10,10 +10,19 @@ ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
 ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/6"
 
 # ---- anti-false-positive tuning (all overridable via Railway Variables) ----
-CONFIDENCE     = 30    # detection threshold. Lower = detects from farther / more easily.
-TARGET_AREA    = 0.08  # sensor must fill this fraction of frame to "stop". Lower = stops from farther.
+CONFIDENCE     = 20    # detection threshold. Lower = detects from farther / more easily.
 CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (kills flicker false-positives).
-CENTER_DEADZONE = 0.35 # fraction of frame width treated as "centered enough" to go FORWARD instead of turning.
+
+# ---- distance estimation (camera-based, no ultrasonic sensor needed) ----
+# distance_cm = (SENSOR_WIDTH_CM * FOCAL_LENGTH_PX) / bbox_width_px
+# SENSOR_WIDTH_CM: real-world width of the HC-SR04 board, measure with a ruler.
+# FOCAL_LENGTH_PX: calibrate once -> take a photo with the sensor at a KNOWN
+#   distance (e.g. 30cm), note the bbox width (pixels) the model reports for
+#   that photo, then: FOCAL_LENGTH_PX = (bw_at_30cm * 30) / SENSOR_WIDTH_CM
+#   The value below is a rough placeholder until you calibrate it.
+SENSOR_WIDTH_CM  = 4.5
+FOCAL_LENGTH_PX  = 500
+STOP_DISTANCE_CM = 5    # stop only once genuinely close/touching - "reach it", not stop far short
 
 # tracks how many frames in a row we've seen the target
 streak = 0
@@ -22,12 +31,13 @@ streak = 0
 @app.route('/health')
 def health():
     return jsonify({
-        "status":         "ok",
-        "model":          ROBOFLOW_MODEL,
-        "api_key_set":    bool(ROBOFLOW_API_KEY),
-        "confidence":     CONFIDENCE,
-        "target_area":    TARGET_AREA,
-        "confirm_frames": CONFIRM_FRAMES
+        "status":           "ok",
+        "model":            ROBOFLOW_MODEL,
+        "api_key_set":      bool(ROBOFLOW_API_KEY),
+        "confidence":       CONFIDENCE,
+        "confirm_frames":   CONFIRM_FRAMES,
+        "stop_distance_cm": STOP_DISTANCE_CM,
+        "focal_length_px":  FOCAL_LENGTH_PX
     })
 
 
@@ -84,8 +94,8 @@ def detect():
         cx   = best["x"]
         bw   = best["width"]
         bh   = best["height"]
-        area = (bw * bh) / (iw * ih)
         conf = round(best["confidence"] * 100)
+        distance_cm = round((SENSOR_WIDTH_CM * FOCAL_LENGTH_PX) / bw, 1) if bw > 0 else None
         bbox = {
             "x": round((cx - bw / 2) / iw, 3),
             "y": round((best["y"] - bh / 2) / ih, 3),
@@ -95,33 +105,30 @@ def detect():
 
         streak += 1
         confirmed = streak >= CONFIRM_FRAMES
-        print(f"Best: {best.get('class')} conf={conf}% area={round(area,3)} streak={streak} confirmed={confirmed}")
+        print(f"Best: {best.get('class')} conf={conf}% distance_cm={distance_cm} streak={streak} confirmed={confirmed}")
 
-        if not confirmed:
+        # Stop immediately if close enough, regardless of confirm streak -
+        # waiting for confirmation here only risks overshooting/crashing into
+        # the target while frames are still "confirming".
+        if distance_cm is not None and distance_cm <= STOP_DISTANCE_CM:
             return jsonify({
-                "command": "FORWARD", "target_found": False,
-                "reason": f"Maybe sensor ({conf}%) — confirming {streak}/{CONFIRM_FRAMES}",
-                "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels
+                "command": "TARGET_FOUND", "target_found": True,
+                "reason": f"Sensor close ({distance_cm}cm) — stopping!",
+                "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels,
+                "distance_cm": distance_cm
             })
 
-        if area > TARGET_AREA:
-            cmd    = "TARGET_FOUND"
-            reason = f"Sensor close ({conf}%) — stopping!"
+        # Forward-only navigation: no left/right steering, just drive straight
+        # at whatever's detected until it's close enough (by distance) to stop.
+        if not confirmed:
+            reason = f"Maybe sensor ({conf}%) — confirming {streak}/{CONFIRM_FRAMES}"
         else:
-            offset = cx - (iw / 2)
-            # NOTE: LEFT/RIGHT swapped relative to raw offset sign to compensate
-            # for the ESP32-CAM feed being mirrored left-right vs the real world.
-            if offset > iw * CENTER_DEADZONE:
-                cmd, reason = "LEFT", f"Sensor on left ({conf}%) — turning"
-            elif offset < -iw * CENTER_DEADZONE:
-                cmd, reason = "RIGHT", f"Sensor on right ({conf}%) — turning"
-            else:
-                cmd, reason = "FORWARD", f"Sensor ahead ({conf}%) — moving closer"
+            reason = f"Found it! Driving to it ({distance_cm}cm)..."
 
         return jsonify({
-            "command": cmd, "target_found": cmd == "TARGET_FOUND",
+            "command": "FORWARD", "target_found": False,
             "reason": reason, "confidence": best["confidence"],
-            "bbox": bbox, "all_labels": all_labels
+            "bbox": bbox, "all_labels": all_labels, "distance_cm": distance_cm
         })
 
     except Exception as e:
