@@ -22,7 +22,7 @@ CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (k
 #   The value below is a rough placeholder until you calibrate it.
 SENSOR_WIDTH_CM  = 4.5
 FOCAL_LENGTH_PX  = 500
-STOP_DISTANCE_CM = 21   # raised from 20 - the reported distance was plateauing
+STOP_DISTANCE_CM = 15  # raised from 20 - the reported distance was plateauing
                          # around ~29.8 and never actually dropping below 20,
                          # so TARGET_FOUND never triggered. Adjust as needed.
 CENTER_DEADZONE  = 0.35 # fraction of frame width treated as "centered enough" to go FORWARD instead of turning. Was 0.2 (too narrow -> turned right constantly).
