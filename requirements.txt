@@ -1,6 +1,4 @@
 flask==3.0.0
 flask-cors==4.0.0
-requests==2.32.3
+requests==2.31.0
 gunicorn==21.2.0
-inference-sdk==1.2.0
-Pillow==11.2.1
