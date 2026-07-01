@@ -1,5 +1,9 @@
-[deploy]
-startCommand = "gunicorn -w 2 -b 0.0.0.0:$PORT server:app"
-healthcheckPath = "/health"
-healthcheckTimeout = 30
-restartPolicyType = "ON_FAILURE"
+{
+  "$schema": "https://schema.railpack.com",
+  "packages": {
+    "python": "3.12"
+  },
+  "deploy": {
+    "aptPackages": ["libgl1"]
+  }
+}
