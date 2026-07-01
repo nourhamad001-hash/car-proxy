@@ -22,7 +22,7 @@ CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (k
 #   The value below is a rough placeholder until you calibrate it.
 SENSOR_WIDTH_CM  = 4.5
 FOCAL_LENGTH_PX  = 500
-STOP_DISTANCE_CM = 5    # stop only once genuinely close/touching - "reach it", not stop far short
+STOP_DISTANCE_CM = 19    # stop only once genuinely close/touching - "reach it", not stop far short
 
 # tracks how many frames in a row we've seen the target
 streak = 0
