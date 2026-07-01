@@ -22,7 +22,7 @@ CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (k
 #   The value below is a rough placeholder until you calibrate it.
 SENSOR_WIDTH_CM  = 4.5
 FOCAL_LENGTH_PX  = 500
-STOP_DISTANCE_CM = 40   # TEMP: raised from 20 because uncalibrated FOCAL_LENGTH_PX
+STOP_DISTANCE_CM = 20   # TEMP: raised from 20 because uncalibrated FOCAL_LENGTH_PX
                          # reports inflated distances that may never drop below 20.
                          # Raise/lower further based on when the car actually stops.
 CENTER_DEADZONE  = 0.35 # fraction of frame width treated as "centered enough" to go FORWARD instead of turning. Was 0.2 (too narrow -> turned right constantly).
