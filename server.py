@@ -22,9 +22,9 @@ CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (k
 #   The value below is a rough placeholder until you calibrate it.
 SENSOR_WIDTH_CM  = 4.5
 FOCAL_LENGTH_PX  = 500
-STOP_DISTANCE_CM = 20   # TEMP: raised from 20 because uncalibrated FOCAL_LENGTH_PX
-                         # reports inflated distances that may never drop below 20.
-                         # Raise/lower further based on when the car actually stops.
+STOP_DISTANCE_CM = 30   # raised from 20 - the reported distance was plateauing
+                         # around ~29.8 and never actually dropping below 20,
+                         # so TARGET_FOUND never triggered. Adjust as needed.
 CENTER_DEADZONE  = 0.35 # fraction of frame width treated as "centered enough" to go FORWARD instead of turning. Was 0.2 (too narrow -> turned right constantly).
 
 # tracks how many frames in a row we've seen the target
@@ -110,6 +110,19 @@ def detect():
         confirmed = streak >= CONFIRM_FRAMES
         print(f"Best: {best.get('class')} conf={conf}% distance_cm={distance_cm} streak={streak} confirmed={confirmed}")
 
+        # Stop immediately if close enough, regardless of confirm streak -
+        # waiting for confirmation here only risks overshooting/crashing into
+        # the target while frames are still "confirming". Confirmation is
+        # still required for the FORWARD/LEFT/RIGHT navigation below, since
+        # false turns are low-risk but a missed stop isn't.
+        if distance_cm is not None and distance_cm <= STOP_DISTANCE_CM:
+            return jsonify({
+                "command": "TARGET_FOUND", "target_found": True,
+                "reason": f"Sensor close ({distance_cm}cm) — stopping!",
+                "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels,
+                "distance_cm": distance_cm
+            })
+
         if not confirmed:
             return jsonify({
                 "command": "FORWARD", "target_found": False,
@@ -118,17 +131,13 @@ def detect():
                 "distance_cm": distance_cm
             })
 
-        if distance_cm is not None and distance_cm <= STOP_DISTANCE_CM:
-            cmd    = "TARGET_FOUND"
-            reason = f"Sensor close ({distance_cm}cm) — stopping!"
+        offset = cx - (iw / 2)
+        if offset > iw * CENTER_DEADZONE:
+            cmd, reason = "RIGHT", f"Sensor on right ({distance_cm}cm) — turning"
+        elif offset < -iw * CENTER_DEADZONE:
+            cmd, reason = "LEFT", f"Sensor on left ({distance_cm}cm) — turning"
         else:
-            offset = cx - (iw / 2)
-            if offset > iw * CENTER_DEADZONE:
-                cmd, reason = "RIGHT", f"Sensor on right ({distance_cm}cm) — turning"
-            elif offset < -iw * CENTER_DEADZONE:
-                cmd, reason = "LEFT", f"Sensor on left ({distance_cm}cm) — turning"
-            else:
-                cmd, reason = "FORWARD", f"Sensor ahead ({distance_cm}cm) — moving closer"
+            cmd, reason = "FORWARD", f"Sensor ahead ({distance_cm}cm) — moving closer"
 
         return jsonify({
             "command": cmd, "target_found": cmd == "TARGET_FOUND",
