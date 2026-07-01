@@ -10,7 +10,7 @@ ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
 ROBOFLOW_MODEL   = "ultrasonic-boom-clmei/6"
 
 # ---- anti-false-positive tuning (all overridable via Railway Variables) ----
-CONFIDENCE     = 10   # detection threshold. Lower = detects from farther / more easily.
+CONFIDENCE     = 20  # detection threshold. Lower = detects from farther / more easily.
 CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (kills flicker false-positives).
 
 # ---- distance estimation (camera-based, no ultrasonic sensor needed) ----
@@ -22,7 +22,7 @@ CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (k
 #   The value below is a rough placeholder until you calibrate it.
 SENSOR_WIDTH_CM  = 4.5
 FOCAL_LENGTH_PX  = 500
-STOP_DISTANCE_CM = 21   # stop when estimated distance is closer than this
+STOP_DISTANCE_CM = 10   # stop when estimated distance is closer than this
 
 # tracks how many frames in a row we've seen the target
 streak = 0
