@@ -1,4 +1,3 @@
-
 import os
 import requests
 from flask import Flask, request, jsonify
@@ -15,11 +14,9 @@ CONFIDENCE     = 20    # detection threshold. Lower = detects from farther / mor
 CONFIRM_FRAMES = 1     # must be seen this many frames in a row before trusting a detection at all.
 
 # ---- simple fixed-count approach (no distance measurement) ----
-# Once the sensor is first confirmed, drive FORWARD this many times WITHOUT
-# re-checking for it each step (skips calling Roboflow during these steps -
-# faster and avoids needing to keep seeing it while close/blurry). After the
-# blind steps are used up, the NEXT frame does a real check: if the sensor is
-# still seen, assume we've reached it and stop; if not, go back to searching.
+# Once the sensor is first detected, drive FORWARD this many times WITHOUT
+# re-checking for it each step (skips calling Roboflow during these steps),
+# then stop. One detection is enough - no re-verification afterward.
 BLIND_FORWARD_STEPS = 2
 
 # tracks how many frames in a row we've seen the target
@@ -52,9 +49,16 @@ def detect():
             return jsonify({"error": "no image"}), 400
 
         # If we're in the middle of a blind forward sequence, skip calling
-        # Roboflow entirely - just drive forward and count down.
+        # Roboflow entirely - just drive forward and count down. When the
+        # last blind step is used up, stop right away - no re-check needed.
         if pending_forward > 0:
             pending_forward -= 1
+            if pending_forward == 0:
+                return jsonify({
+                    "command": "TARGET_FOUND", "target_found": True,
+                    "reason": "Done! Reached it, stopping.",
+                    "confidence": 0, "bbox": None, "all_labels": []
+                })
             print(f"Blind forward step, {pending_forward} remaining")
             return jsonify({
                 "command": "FORWARD", "target_found": False,
@@ -130,20 +134,10 @@ def detect():
                 "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels
             })
 
-        # This is a real check (not a blind step) that still sees the sensor
-        # after we already did our blind forward run -> assume we've reached
-        # it and stop. (On the very first confirmation, streak just hit
-        # CONFIRM_FRAMES for the first time, so this also covers "just found
-        # it" -> kick off the blind forward run below instead of stopping.)
-        if streak > CONFIRM_FRAMES:
-            streak = 0
-            return jsonify({
-                "command": "TARGET_FOUND", "target_found": True,
-                "reason": f"Found it! ({conf}%) — reached, stopping!",
-                "confidence": best["confidence"], "bbox": bbox, "all_labels": all_labels
-            })
-
-        # Just confirmed for the first time - kick off the blind forward run.
+        # Confirmed for the first time - kick off the blind forward run.
+        # (Subsequent calls won't reach this far - the pending_forward check
+        # at the top of the function handles everything until it stops.)
+        streak = 0
         pending_forward = BLIND_FORWARD_STEPS
         return jsonify({
             "command": "FORWARD", "target_found": False,
