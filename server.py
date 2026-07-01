@@ -23,6 +23,7 @@ CONFIRM_FRAMES = 2     # must be seen this many frames in a row before acting (k
 SENSOR_WIDTH_CM  = 4.5
 FOCAL_LENGTH_PX  = 500
 STOP_DISTANCE_CM = 20   # stop when estimated distance is closer than this
+CENTER_DEADZONE  = 0.35 # fraction of frame width treated as "centered enough" to go FORWARD instead of turning. Was 0.2 (too narrow -> turned right constantly).
 
 # tracks how many frames in a row we've seen the target
 streak = 0
@@ -120,9 +121,9 @@ def detect():
             reason = f"Sensor close ({distance_cm}cm) — stopping!"
         else:
             offset = cx - (iw / 2)
-            if offset > iw * 0.2:
+            if offset > iw * CENTER_DEADZONE:
                 cmd, reason = "RIGHT", f"Sensor on right ({distance_cm}cm) — turning"
-            elif offset < -iw * 0.2:
+            elif offset < -iw * CENTER_DEADZONE:
                 cmd, reason = "LEFT", f"Sensor on left ({distance_cm}cm) — turning"
             else:
                 cmd, reason = "FORWARD", f"Sensor ahead ({distance_cm}cm) — moving closer"
